@@ -41,6 +41,8 @@ namespace EmuTrainStopBar
             this.labelDistance = new System.Windows.Forms.Label();
             this.timerFrame = new System.Windows.Forms.Timer(this.components);
             this.btnFullscreen = new System.Windows.Forms.Button();
+            this.pictureBoxBar = new System.Windows.Forms.PictureBox();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBoxBar)).BeginInit();
             this.SuspendLayout();
             // 
             // btnQuit
@@ -187,11 +189,22 @@ namespace EmuTrainStopBar
             this.btnFullscreen.Visible = false;
             this.btnFullscreen.Click += new System.EventHandler(this.btnFullscreen_Click);
             // 
+            // pictureBoxBar
+            // 
+            this.pictureBoxBar.BackColor = System.Drawing.Color.Transparent;
+            this.pictureBoxBar.Location = new System.Drawing.Point(360, 0);
+            this.pictureBoxBar.Name = "pictureBoxBar";
+            this.pictureBoxBar.Size = new System.Drawing.Size(30, 600);
+            this.pictureBoxBar.TabIndex = 7;
+            this.pictureBoxBar.TabStop = false;
+            this.pictureBoxBar.Visible = false;
+            // 
             // Form1
             // 
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.None;
             this.BackColor = System.Drawing.Color.LightGray;
             this.ClientSize = new System.Drawing.Size(384, 261);
+            this.Controls.Add(this.pictureBoxBar);
             this.Controls.Add(this.btnFullscreen);
             this.Controls.Add(this.labelDistance);
             this.Controls.Add(this.labelSettings);
@@ -210,6 +223,8 @@ namespace EmuTrainStopBar
             this.Text = "Overlay";
             this.TopMost = true;
             this.TransparencyKey = System.Drawing.Color.Magenta;
+            this.SizeChanged += new System.EventHandler(this.Form1_SizeChanged);
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBoxBar)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -228,6 +243,7 @@ namespace EmuTrainStopBar
         private System.Windows.Forms.Label labelDistance;
         private System.Windows.Forms.Timer timerFrame;
         private System.Windows.Forms.Button btnFullscreen;
+        private System.Windows.Forms.PictureBox pictureBoxBar;
     }
 }
 

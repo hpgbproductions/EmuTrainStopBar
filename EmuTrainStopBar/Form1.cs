@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -43,17 +44,28 @@ namespace EmuTrainStopBar
 
         // Settings for the settings
         string SettingsFileLocation = "game.txt";
-        string SettingsLinePattern = @"^([^#\n].+?),(.+?),(.+?),(.+?),([0-9.-]+)";
+        string SettingsLinePattern = @"^([^#\n].+?),(.+?),([0-9A-Fa-f]+?),(.+?),([0-9.-]+),([0-9.]+),([0-9]+?),([0-9]+)";
 
         string[] SettingsLines;
         int SettingsLineNum;
 
         // Applied game settings
-        string GameId = "";
-        string GameVersion = "";
-        uint DistanceAddress;
-        Type DistanceDataType;
-        float DistanceScale;
+        string GameId = "";                 // 1
+        string GameVersion = "";            // 2
+        uint DistanceAddress;               // 3
+        DistanceDataTypes DistanceDataType; // 4
+        float DistanceScale;                // 5
+        float AspectRatio;                  // 6
+        int PixelsPerMeter = 70;            // 7
+        int BarWidth = 20;                  // 8
+
+        // Stopbar
+        Bitmap BmBar;
+        SolidBrush VeryCloseBrush = new SolidBrush(Color.White);
+        SolidBrush M1Brush = new SolidBrush(Color.FromArgb(0xC0, 0xE0, 0xF8));
+        HatchBrush M2Brush = new HatchBrush(HatchStyle.Percent50, Color.FromArgb(0x70, 0xA0, 0xD0));
+        HatchBrush M3Brush = new HatchBrush(HatchStyle.Percent25, Color.FromArgb(0x38, 0x50, 0x80));
+        SolidBrush MarkerBrush = new SolidBrush(Color.FromArgb(0xFF, 0xA8, 0x00));
 
         // This function is run when starting the form
         public Form1()
@@ -71,6 +83,29 @@ namespace EmuTrainStopBar
             startFormBorderStyle = this.FormBorderStyle;
             startWidth = this.Width;
             startHeight = this.Height;
+
+            BmBar = new Bitmap(BarWidth, this.Height);
+            pictureBoxBar.Image = BmBar;
+            pictureBoxBar.Width = BarWidth;
+        }
+
+        private double ReadAsDouble(IntPtr v, UInt32 address, DistanceDataTypes storedDataType)
+        {
+            switch (storedDataType)
+            {
+                case DistanceDataTypes.s16:
+                    return Pine.ReadInt16(v, address);
+                case DistanceDataTypes.s32:
+                    return Pine.ReadInt32(v, address);
+                case DistanceDataTypes.s64:
+                    return Pine.ReadInt64(v, address);
+                case DistanceDataTypes.f32:
+                    return Pine.ReadSingle(v, address);
+                case DistanceDataTypes.f64:
+                    return Pine.ReadDouble(v, address);
+                default:
+                    return 0;
+            }
         }
 
         // Reset to idle appearance
@@ -84,6 +119,28 @@ namespace EmuTrainStopBar
 
             btnFullscreen.Visible = false;
             timerFrame.Stop();
+
+            pictureBoxBar.Visible = false;
+        }
+
+        // Fit the window within a determined rectangular area while setting aspect ratio
+        private void SetWindowPosition(int centerX, int centerY, int maxWidth, int maxHeight, float aspectRatio)
+        {
+            if (maxWidth * aspectRatio > maxHeight)
+            {
+                // Use height limit
+                this.Width = (int)Math.Round(maxHeight / aspectRatio);
+                this.Height = maxHeight;
+            }
+            else
+            {
+                // Use width limit
+                this.Width = maxWidth;
+                this.Height = (int)Math.Round(maxWidth * aspectRatio);
+            }
+
+            this.Left = centerX - this.Width / 2;
+            this.Top = centerY - this.Height / 2;
         }
 
         private void btnQuit_Click(object sender, EventArgs e)
@@ -135,11 +192,21 @@ namespace EmuTrainStopBar
                     targetScreen = Screen.PrimaryScreen;
                 }
 
+                Rectangle screenRect = targetScreen.Bounds;
+                int centerX = (screenRect.Left + screenRect.Right) / 2;
+                int centerY = (screenRect.Top + screenRect.Bottom) / 2;
+                int maxWidth = screenRect.Right - screenRect.Left;
+                int maxHeight = screenRect.Bottom - screenRect.Top;
+                SetWindowPosition(centerX, centerY, maxWidth, maxHeight, AspectRatio);
+
+                // Deprecated
                 // Set size and position
+                /*
                 this.Left = targetScreen.Bounds.Left;
                 this.Top = targetScreen.Bounds.Top;
                 this.Width = targetScreen.Bounds.Width;
                 this.Height = targetScreen.Bounds.Height;
+                */
             }
         }
 
@@ -177,11 +244,6 @@ namespace EmuTrainStopBar
             btnDuckstation.Refresh();
             btnPCSX2.Refresh();
             btnRPCS3.Refresh();
-
-            // Get emulator process
-            // (PineMode is already set in each button's respective function)
-            EmuProcess = GetEmulatorProcess(PineMode);
-            EmuWindowHandle = EmuProcess.MainWindowHandle;
 
             // Start timers
             timerInfo.Start();
@@ -232,11 +294,17 @@ namespace EmuTrainStopBar
                     uint _address;
                     DistanceDataTypes _dataTypeAsEnum;
                     float _scale;
+                    float _aspectRatio;
+                    int _pixelsPerMeter;
+                    int _barWidth;
                     try
                     {
                         _address = uint.Parse(match.Groups[3].Value, NumberStyles.HexNumber);
                         _dataTypeAsEnum = (DistanceDataTypes)Enum.Parse(typeof(DistanceDataTypes), match.Groups[4].Value, true);
                         _scale = float.Parse(match.Groups[5].Value, NumberStyles.Float);
+                        _aspectRatio = float.Parse(match.Groups[6].Value, NumberStyles.Float);
+                        _pixelsPerMeter = int.Parse(match.Groups[7].Value);
+                        _barWidth = int.Parse(match.Groups[8].Value);
                     }
                     catch (ArgumentException)
                     {
@@ -250,25 +318,11 @@ namespace EmuTrainStopBar
                     // Apply settings
                     SettingsLineNum = i;
                     DistanceAddress = _address;
+                    DistanceDataType = _dataTypeAsEnum;
                     DistanceScale = _scale;
-                    switch (_dataTypeAsEnum)
-                    {
-                        case DistanceDataTypes.s16:
-                            DistanceDataType = typeof(Int16);
-                            break;
-                        case DistanceDataTypes.s32:
-                            DistanceDataType = typeof(Int32);
-                            break;
-                        case DistanceDataTypes.s64:
-                            DistanceDataType = typeof(Int64);
-                            break;
-                        case DistanceDataTypes.f32:
-                            DistanceDataType = typeof(float);
-                            break;
-                        case DistanceDataTypes.f64:
-                            DistanceDataType = typeof(double);
-                            break;
-                    }
+                    AspectRatio = _aspectRatio;
+                    PixelsPerMeter = _pixelsPerMeter;
+                    BarWidth = _barWidth;
 
                     // Do not search any more
                     break;
@@ -296,6 +350,22 @@ namespace EmuTrainStopBar
             }
             else
             {
+                // Get emulator process
+                // (PineMode is already set in each button's respective function)
+                EmuProcess = GetEmulatorProcess(PineMode);
+                if (EmuProcess == null)
+                {
+                    // Emulator is not running
+                    labelGameName.Text = $"System standby ({PineMode})";
+                    labelGameId.Text = "Emulator not available.";
+                    labelSettings.Text = "";
+                    labelDistance.Text = "";
+
+                    RestoreStyle();
+                    return;
+                }
+                EmuWindowHandle = EmuProcess.MainWindowHandle;
+
                 int emuState = Pine.pine_status(ipc, false);
                 if (emuState == 2)
                 {
@@ -336,6 +406,7 @@ namespace EmuTrainStopBar
                     timerFrame.Start();
                 }
                 btnFullscreen.Visible = true;
+                pictureBoxBar.Visible = true;
 
                 IntPtr gameTitlePtr = Pine.pine_getgametitle(ipc, false);
                 string gameTitle = Pine.ReadUnmanagedString(gameTitlePtr);
@@ -356,7 +427,7 @@ namespace EmuTrainStopBar
                 if (GameId != gameId || GameVersion != gameVersion)
                 {
                     ApplySettings(gameId, gameVersion);
-                    labelSettings.Text = $"[Line {SettingsLineNum}] 0x{DistanceAddress.ToString("X8")}, {DistanceDataType}, x{DistanceScale}";
+                    labelSettings.Text = $"[Line {SettingsLineNum}] 0x{DistanceAddress.ToString("X8")}, {DistanceDataType}, x{DistanceScale}, AR{AspectRatio}, {PixelsPerMeter}px/m, {BarWidth}px";
                 }
             }
         }
@@ -377,13 +448,67 @@ namespace EmuTrainStopBar
                 // Update window size and position
                 if (getRectSuccess)
                 {
+                    int centerX = (EmuRect.Left + EmuRect.Right) / 2;
+                    int centerY = (EmuRect.Top + EmuRect.Bottom + CaptionHeight) / 2;
+                    int maxWidth = EmuRect.Right - EmuRect.Left;
+                    int maxHeight = EmuRect.Bottom - EmuRect.Top - CaptionHeight - 2 * MenuHeight;
+                    SetWindowPosition(centerX, centerY, maxWidth, maxHeight, AspectRatio);
+
+                    // Deprecated
+                    /*
                     this.Top = EmuRect.Top + CaptionHeight + MenuHeight;
                     this.Left = EmuRect.Left;
-
                     this.Width = EmuRect.Right - EmuRect.Left;
-                    this.Height = EmuRect.Bottom - EmuRect.Top - CaptionHeight - MenuHeight;
+                    this.Height = EmuRect.Bottom - EmuRect.Top - CaptionHeight - 2*MenuHeight;
+                    */
                 }
             }
+
+            // Stopbar
+            pictureBoxBar.Left = this.Width - pictureBoxBar.Width;
+            pictureBoxBar.Top = 0;
+            pictureBoxBar.Width = pictureBoxBar.Width;
+            pictureBoxBar.Height = this.Height;
+
+            // Get stop distance
+            double distance = ReadAsDouble(ipc, DistanceAddress, DistanceDataType);
+            labelDistance.Text = $"{distance :F2} m";
+
+            // Create stopbar image
+            Graphics gb = Graphics.FromImage(BmBar);
+            gb.Clear(this.TransparencyKey);
+
+            // Actual stopbar background
+            int stopbarTop = this.Height / 2 - 3 * PixelsPerMeter;
+            gb.FillRectangle(M3Brush, new Rectangle(0, stopbarTop, BarWidth, PixelsPerMeter));
+            gb.FillRectangle(M3Brush, new Rectangle(0, stopbarTop + 5 * PixelsPerMeter, BarWidth, PixelsPerMeter));
+            gb.FillRectangle(M2Brush, new Rectangle(0, stopbarTop + PixelsPerMeter, BarWidth, 4 * PixelsPerMeter));
+            gb.FillRectangle(M1Brush, new Rectangle(0, stopbarTop + 2 * PixelsPerMeter, BarWidth, 2 * PixelsPerMeter));
+            gb.FillRectangle(VeryCloseBrush, new Rectangle(0, stopbarTop + 3 * PixelsPerMeter - BarWidth / 2, BarWidth, BarWidth));
+
+            // Marker
+            if (Math.Abs(distance) < 50)
+            {
+                int markerCenterY = (int)(this.Height / 2 - distance * PixelsPerMeter);
+                Point[] poly = new Point[]
+                {
+                new Point(BarWidth / 2, markerCenterY - BarWidth / 2),
+                new Point(BarWidth, markerCenterY),
+                new Point(BarWidth / 2, markerCenterY + BarWidth / 2),
+                new Point(0, markerCenterY)
+                };
+                gb.FillPolygon(MarkerBrush, poly);
+            }
+
+            pictureBoxBar.Image = BmBar;
+            gb.Dispose();
+        }
+
+        private void Form1_SizeChanged(object sender, EventArgs e)
+        {
+            // Assume that the height has changed
+            BmBar = new Bitmap(BarWidth, this.Height);
+            pictureBoxBar.Image = BmBar;
         }
     }
 }
