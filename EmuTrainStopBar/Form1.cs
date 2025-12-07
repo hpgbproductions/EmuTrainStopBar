@@ -1,0 +1,389 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Diagnostics;
+using System.Drawing;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace EmuTrainStopBar
+{
+    public partial class Form1 : Form
+    {
+        // Supported emulators
+        // Note that the enum value names are important, they are also used for string operations
+        enum PineModes { Inactive, Duckstation, PCSX2, RPCS3 }
+
+        PineModes PineMode = PineModes.Inactive;
+        IntPtr ipc;
+
+        // Store some design settings so they can be reloaded later
+        Color startBackColor;
+        FormBorderStyle startFormBorderStyle;
+        int startWidth;
+        int startHeight;
+
+        enum DistanceDataTypes { s16, s32, s64, f32, f64 }
+
+        // Emulator process
+        Process EmuProcess;
+        IntPtr EmuWindowHandle = IntPtr.Zero;
+        Window.RECT EmuRect;
+
+        // Overlay sizing
+        bool OverlayFullscreen = false;
+        int CaptionHeight = SystemInformation.CaptionHeight;
+        int MenuHeight = SystemInformation.MenuHeight;
+
+        // Settings for the settings
+        string SettingsFileLocation = "game.txt";
+        string SettingsLinePattern = @"^([^#\n].+?),(.+?),(.+?),(.+?),([0-9.-]+)";
+
+        string[] SettingsLines;
+        int SettingsLineNum;
+
+        // Applied game settings
+        string GameId = "";
+        string GameVersion = "";
+        uint DistanceAddress;
+        Type DistanceDataType;
+        float DistanceScale;
+
+        // This function is run when starting the form
+        public Form1()
+        {
+            InitializeComponent();
+
+            // Default strings before the first tick
+            labelGameName.Text = "System standby";
+            labelGameId.Text = "1. Enable PINE in your emulator";
+            labelSettings.Text = "2. Choose your emulator below";
+            labelDistance.Text = "";
+
+            // Store the style options for the restore function
+            startBackColor = this.BackColor;
+            startFormBorderStyle = this.FormBorderStyle;
+            startWidth = this.Width;
+            startHeight = this.Height;
+        }
+
+        // Reset to idle appearance
+        // Also disables fullscreen
+        private void RestoreStyle()
+        {
+            this.BackColor = startBackColor;
+            this.FormBorderStyle = startFormBorderStyle;
+            this.Width = startWidth;
+            this.Height = startHeight;
+
+            btnFullscreen.Visible = false;
+            timerFrame.Stop();
+        }
+
+        private void btnQuit_Click(object sender, EventArgs e)
+        {
+            // Clear resources by closing IPC
+            switch (PineMode)
+            {
+                case PineModes.Duckstation:
+                    Pine.pine_duckstation_delete(ipc);
+                    break;
+                case PineModes.PCSX2:
+                    Pine.pine_pcsx2_delete(ipc);
+                    break;
+                case PineModes.RPCS3:
+                    Pine.pine_rpcs3_delete(ipc);
+                    break;
+            }
+
+            // Actually close the app and its window
+            Application.Exit();
+        }
+
+        private void btnFullscreen_Click(object sender, EventArgs e)
+        {
+            OverlayFullscreen = !OverlayFullscreen;
+
+            if (OverlayFullscreen)
+            {
+                Point formCenter = new Point(
+                    this.Left + this.Width / 2,
+                    this.Top + this.Height / 2);
+
+                Screen targetScreen = null;
+
+                // Choose the screen that the center of the form is currently in
+                // ==> where the emulator is
+                foreach (Screen s in Screen.AllScreens)
+                {
+                    if (s.Bounds.Contains(formCenter))
+                    {
+                        targetScreen = s;
+                        break;
+                    }
+                }
+
+                // else get the primary screen
+                if (targetScreen == null)
+                {
+                    targetScreen = Screen.PrimaryScreen;
+                }
+
+                // Set size and position
+                this.Left = targetScreen.Bounds.Left;
+                this.Top = targetScreen.Bounds.Top;
+                this.Width = targetScreen.Bounds.Width;
+                this.Height = targetScreen.Bounds.Height;
+            }
+        }
+
+        private void btnDuckstation_Click(object sender, EventArgs e)
+        {
+            // Initialize in Duckstation mode
+            ipc = Pine.pine_duckstation_new();
+            PineMode = PineModes.Duckstation;
+            CommonPineInit();
+        }
+
+        private void btnPCSX2_Click(object sender, EventArgs e)
+        {
+            // Initialize in PCSX2 mode
+            ipc = Pine.pine_pcsx2_new();
+            PineMode = PineModes.PCSX2;
+            CommonPineInit();
+        }
+
+        private void btnRPCS3_Click(object sender, EventArgs e)
+        {
+            // Initialize in RPCS3 mode
+            ipc = Pine.pine_rpcs3_new();
+            PineMode = PineModes.RPCS3;
+            CommonPineInit();
+        }
+
+        // Common operations run after clicking any of the emulator choices
+        private void CommonPineInit()
+        {
+            // Hide emulator choices
+            btnDuckstation.Visible = false;
+            btnPCSX2.Visible = false;
+            btnRPCS3.Visible = false;
+            btnDuckstation.Refresh();
+            btnPCSX2.Refresh();
+            btnRPCS3.Refresh();
+
+            // Get emulator process
+            // (PineMode is already set in each button's respective function)
+            EmuProcess = GetEmulatorProcess(PineMode);
+            EmuWindowHandle = EmuProcess.MainWindowHandle;
+
+            // Start timers
+            timerInfo.Start();
+
+            // Run info update once immediately
+            timerInfo_Tick(this, null);
+        }
+
+        private Process GetEmulatorProcess(PineModes mode)
+        {
+            // Convert both to the uppercase to provide case-insensitive search (just in case)
+            string checkStr = mode.ToString().ToUpperInvariant();
+
+            Process[] allProcesses = Process.GetProcesses();
+            foreach (Process p in allProcesses)
+            {
+                if (p.ProcessName.ToUpperInvariant().Contains(checkStr))
+                {
+                    return p;
+                }
+            }
+            return null;
+        }
+
+        private void ApplySettings(string id, string version)
+        {
+            SettingsLineNum = -1;
+
+            // Open and read settings file
+            SettingsLines = File.ReadAllLines(SettingsFileLocation);
+
+            // Use the first valid and matching line for settings
+            for (int i = 0; i < SettingsLines.Length; i++)
+            {
+                // Use regex to check that the line is valid
+                string line = SettingsLines[i];
+                Match match = Regex.Match(line, SettingsLinePattern);
+
+                if (!match.Success)
+                {
+                    // Invalid line
+                    continue;
+                }
+
+                if (match.Groups[1].Value == id && match.Groups[2].Value == version)
+                {
+                    // Try to parse
+                    uint _address;
+                    DistanceDataTypes _dataTypeAsEnum;
+                    float _scale;
+                    try
+                    {
+                        _address = uint.Parse(match.Groups[3].Value, NumberStyles.HexNumber);
+                        _dataTypeAsEnum = (DistanceDataTypes)Enum.Parse(typeof(DistanceDataTypes), match.Groups[4].Value, true);
+                        _scale = float.Parse(match.Groups[5].Value, NumberStyles.Float);
+                    }
+                    catch (ArgumentException)
+                    {
+                        continue;
+                    }
+                    catch (OverflowException)
+                    {
+                        continue;
+                    }
+
+                    // Apply settings
+                    SettingsLineNum = i;
+                    DistanceAddress = _address;
+                    DistanceScale = _scale;
+                    switch (_dataTypeAsEnum)
+                    {
+                        case DistanceDataTypes.s16:
+                            DistanceDataType = typeof(Int16);
+                            break;
+                        case DistanceDataTypes.s32:
+                            DistanceDataType = typeof(Int32);
+                            break;
+                        case DistanceDataTypes.s64:
+                            DistanceDataType = typeof(Int64);
+                            break;
+                        case DistanceDataTypes.f32:
+                            DistanceDataType = typeof(float);
+                            break;
+                        case DistanceDataTypes.f64:
+                            DistanceDataType = typeof(double);
+                            break;
+                    }
+
+                    // Do not search any more
+                    break;
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
+            // Apply settings complete (whether passed or failed)
+            // Set new game id and version to prevent reading the file again
+            GameId = id;
+            GameVersion = version;
+        }
+
+        // Info tick is used to update:
+            // Window style: 4 lines of debug text, background
+            // Communications: PINE state, game settings, etc.
+        private void timerInfo_Tick(object sender, EventArgs e)
+        {
+            if (PineMode == PineModes.Inactive)
+            {
+                return;
+            }
+            else
+            {
+                int emuState = Pine.pine_status(ipc, false);
+                if (emuState == 2)
+                {
+                    // PINE server is active, but emulator is not
+                    labelGameName.Text = $"System standby ({PineMode})";
+                    labelGameId.Text = "PINE connection established.";
+                    labelSettings.Text = "Waiting for game...";
+                    labelDistance.Text = "";
+
+                    RestoreStyle();
+                    return;
+                }
+
+                // Check for error codes after getting emulator state
+                // Required as the emulator state is 0
+                    // both in normal operation and communication errors
+                int ipcError = Pine.pine_get_error(ipc, false);
+                if (ipcError > 0)
+                {
+                    // Usually happens when the PINE server is not active yet
+                    labelGameName.Text = $"System standby ({PineMode})";
+                    labelGameId.Text = "PINE communication error.";
+                    labelSettings.Text = "Check that it is enabled.";
+                    labelDistance.Text = "";
+
+                    RestoreStyle();
+                    return;
+                }
+
+                // Everything below only happens in gameplay and when PINE is working
+
+                this.BackColor = this.TransparencyKey;
+                this.FormBorderStyle = FormBorderStyle.None;
+
+                // Features for window size and position change
+                if (!timerFrame.Enabled)
+                {
+                    timerFrame.Start();
+                }
+                btnFullscreen.Visible = true;
+
+                IntPtr gameTitlePtr = Pine.pine_getgametitle(ipc, false);
+                string gameTitle = Pine.ReadUnmanagedString(gameTitlePtr);
+
+                IntPtr gameIdPtr = Pine.pine_getgameid(ipc, false);
+                string gameId = Pine.ReadUnmanagedString(gameIdPtr);
+
+                IntPtr gameUuidPtr = Pine.pine_getgameuuid(ipc, false);
+                string gameUuid = Pine.ReadUnmanagedString(gameUuidPtr);
+
+                IntPtr gameVersionPtr = Pine.pine_getgameversion(ipc, false);
+                string gameVersion = Pine.ReadUnmanagedString(gameVersionPtr);
+
+                labelGameName.Text = gameTitle;
+                labelGameId.Text = $"{gameId} ({gameVersion})";
+
+                // Reload settings if the game has changed
+                if (GameId != gameId || GameVersion != gameVersion)
+                {
+                    ApplySettings(gameId, gameVersion);
+                    labelSettings.Text = $"[Line {SettingsLineNum}] 0x{DistanceAddress.ToString("X8")}, {DistanceDataType}, x{DistanceScale}";
+                }
+            }
+        }
+
+        // Frame tick is run very frequently
+        private void timerFrame_Tick(object sender, EventArgs e)
+        {
+            // Emulator has not been detected
+            if (EmuWindowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            bool getRectSuccess = Window.GetWindowRect(EmuWindowHandle, out EmuRect);
+
+            if (!OverlayFullscreen)
+            {
+                // Update window size and position
+                if (getRectSuccess)
+                {
+                    this.Top = EmuRect.Top + CaptionHeight + MenuHeight;
+                    this.Left = EmuRect.Left;
+
+                    this.Width = EmuRect.Right - EmuRect.Left;
+                    this.Height = EmuRect.Bottom - EmuRect.Top - CaptionHeight - MenuHeight;
+                }
+            }
+        }
+    }
+}

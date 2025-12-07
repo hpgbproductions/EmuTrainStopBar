@@ -1,0 +1,19 @@
+# Format: Disc ID, version, memory location, data type, multiplier, comments
+
+# Disc ID:		Typically 4 letters, a dash, and 5 numbers.
+# Version:		Game version.
+# Memory location:	Hexadecimal location of distance address as an offset from EEMEM start.
+#				(Use Cheat Engine)
+# Data type:		One of the following: (s16, s32, s64, f32, f64)
+				Refers to signed integers and floating-point numbers.
+# Multiplier:		Use it to convert to meters. Can have negative sign and decimal point.
+# Comments:		Store any text, like the game title.
+
+# DO NOT use commas in data entries
+# Commas CANNOT be commented out here
+
+# DO NOT use spaces anywhere except for the comments column
+
+### BEGINNING OF DATA TABLE ###
+
+SLPM-67007,1.01,1ED340,f32,1,Ongakukan Keisei Toei Keikyu
