@@ -413,8 +413,8 @@ namespace EmuTrainStopBar
                     // Usually happens when the PINE server is not active yet
                     labelGameName.Text = $"System standby ({PineMode})";
                     labelGameId.Text = "PINE communication error.";
-                    labelSettings.Text = "Check that it is enabled.";
-                    labelDistance.Text = "";
+                    labelSettings.Text = "Check that it is enabled,";
+                    labelDistance.Text = "and a game is running.";
 
                     RestoreStyle();
                     return;
