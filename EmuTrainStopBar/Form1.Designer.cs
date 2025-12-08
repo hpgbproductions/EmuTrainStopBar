@@ -42,6 +42,7 @@ namespace EmuTrainStopBar
             this.timerFrame = new System.Windows.Forms.Timer(this.components);
             this.btnFullscreen = new System.Windows.Forms.Button();
             this.pictureBoxBar = new System.Windows.Forms.PictureBox();
+            this.timerMouseMove = new System.Windows.Forms.Timer(this.components);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBoxBar)).BeginInit();
             this.SuspendLayout();
             // 
@@ -167,7 +168,7 @@ namespace EmuTrainStopBar
             // 
             // timerFrame
             // 
-            this.timerFrame.Interval = 50;
+            this.timerFrame.Interval = 16;
             this.timerFrame.Tick += new System.EventHandler(this.timerFrame_Tick);
             // 
             // btnFullscreen
@@ -199,6 +200,11 @@ namespace EmuTrainStopBar
             this.pictureBoxBar.TabStop = false;
             this.pictureBoxBar.Visible = false;
             // 
+            // timerMouseMove
+            // 
+            this.timerMouseMove.Interval = 3000;
+            this.timerMouseMove.Tick += new System.EventHandler(this.timerMouseMove_Tick);
+            // 
             // Form1
             // 
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.None;
@@ -220,7 +226,7 @@ namespace EmuTrainStopBar
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "Form1";
-            this.Text = "Overlay";
+            this.Text = "NTNC Stop Bar Overlay";
             this.TopMost = true;
             this.TransparencyKey = System.Drawing.Color.Magenta;
             this.SizeChanged += new System.EventHandler(this.Form1_SizeChanged);
@@ -244,6 +250,7 @@ namespace EmuTrainStopBar
         private System.Windows.Forms.Timer timerFrame;
         private System.Windows.Forms.Button btnFullscreen;
         private System.Windows.Forms.PictureBox pictureBoxBar;
+        private System.Windows.Forms.Timer timerMouseMove;
     }
 }
 

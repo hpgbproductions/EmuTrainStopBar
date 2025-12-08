@@ -102,9 +102,18 @@ namespace EmuTrainStopBar
             return BitConverter.ToDouble(bs, 0);
         }
 
+        // Retrieve the string at ptr, which is encoded in UTF-8
+        // It is converted to ANSI by marshalling, there is no function to read it as UTF-8
+        // Convert it back to UTF-8 (I love Windows!!!!)
         public static string ReadUnmanagedString(IntPtr ptr)
         {
-            return Marshal.PtrToStringAnsi(ptr);
+            string strAnsi = Marshal.PtrToStringAnsi(ptr);
+
+            byte[] bytes = Encoding.Default.GetBytes(strAnsi);
+            char[] csUtf8 = Encoding.UTF8.GetChars(bytes);
+            string strUtf8 = new string(csUtf8);
+
+            return strUtf8;
         }
 
         // if the function you want to use isn't there you'll have to define the binding to the function

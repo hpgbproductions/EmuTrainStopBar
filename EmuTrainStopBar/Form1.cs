@@ -30,6 +30,9 @@ namespace EmuTrainStopBar
         int startWidth;
         int startHeight;
 
+        double startOpacity;
+        double InGameOpacity = 0.7;
+
         enum DistanceDataTypes { s16, s32, s64, f32, f64 }
 
         // Emulator process
@@ -50,6 +53,7 @@ namespace EmuTrainStopBar
         int SettingsLineNum;
 
         // Applied game settings
+        bool SettingsLoadSuccess = false;
         string GameId = "";                 // 1
         string GameVersion = "";            // 2
         uint DistanceAddress;               // 3
@@ -59,13 +63,19 @@ namespace EmuTrainStopBar
         int PixelsPerMeter = 70;            // 7
         int BarWidth = 20;                  // 8
 
+        const int CenterLineThickness = 4;
+
         // Stopbar
         Bitmap BmBar;
         SolidBrush VeryCloseBrush = new SolidBrush(Color.White);
         SolidBrush M1Brush = new SolidBrush(Color.FromArgb(0xC0, 0xE0, 0xF8));
-        HatchBrush M2Brush = new HatchBrush(HatchStyle.Percent50, Color.FromArgb(0x70, 0xA0, 0xD0));
-        HatchBrush M3Brush = new HatchBrush(HatchStyle.Percent25, Color.FromArgb(0x38, 0x50, 0x80));
+        SolidBrush M2Brush = new SolidBrush(Color.FromArgb(0x70, 0xA0, 0xD0));
+        SolidBrush M3Brush = new SolidBrush(Color.FromArgb(0x38, 0x50, 0x80));
         SolidBrush MarkerBrush = new SolidBrush(Color.FromArgb(0xFF, 0xA8, 0x00));
+        const double MaxDistance = 50;
+
+        // For auto-hide function
+        Point PrevCursorPosition = new Point(0, 0);
 
         // This function is run when starting the form
         public Form1()
@@ -83,6 +93,7 @@ namespace EmuTrainStopBar
             startFormBorderStyle = this.FormBorderStyle;
             startWidth = this.Width;
             startHeight = this.Height;
+            startOpacity = this.Opacity;
 
             BmBar = new Bitmap(BarWidth, this.Height);
             pictureBoxBar.Image = BmBar;
@@ -112,31 +123,43 @@ namespace EmuTrainStopBar
         // Also disables fullscreen
         private void RestoreStyle()
         {
+            SetMenuContentVisibility(true);
+            btnFullscreen.Visible = false;
+            pictureBoxBar.Visible = false;
+
             this.BackColor = startBackColor;
             this.FormBorderStyle = startFormBorderStyle;
             this.Width = startWidth;
             this.Height = startHeight;
+            this.Opacity = startOpacity;
 
-            btnFullscreen.Visible = false;
             timerFrame.Stop();
+        }
 
-            pictureBoxBar.Visible = false;
+        private void SetMenuContentVisibility(bool vis)
+        {
+            btnQuit.Visible = vis;
+            btnFullscreen.Visible = vis;
+            labelGameName.Visible = vis;
+            labelGameId.Visible = vis;
+            labelSettings.Visible = vis;
+            labelDistance.Visible = vis;
         }
 
         // Fit the window within a determined rectangular area while setting aspect ratio
         private void SetWindowPosition(int centerX, int centerY, int maxWidth, int maxHeight, float aspectRatio)
         {
-            if (maxWidth * aspectRatio > maxHeight)
+            if (maxWidth / aspectRatio < maxHeight)
             {
                 // Use height limit
-                this.Width = (int)Math.Round(maxHeight / aspectRatio);
+                this.Width = (int)Math.Round(maxHeight * aspectRatio);
                 this.Height = maxHeight;
             }
             else
             {
                 // Use width limit
                 this.Width = maxWidth;
-                this.Height = (int)Math.Round(maxWidth * aspectRatio);
+                this.Height = (int)Math.Round(maxWidth / aspectRatio);
             }
 
             this.Left = centerX - this.Width / 2;
@@ -268,7 +291,8 @@ namespace EmuTrainStopBar
             return null;
         }
 
-        private void ApplySettings(string id, string version)
+        // Read settings file and apply them if applicable
+        private bool ApplySettings(string id, string version)
         {
             SettingsLineNum = -1;
 
@@ -337,6 +361,7 @@ namespace EmuTrainStopBar
             // Set new game id and version to prevent reading the file again
             GameId = id;
             GameVersion = version;
+            return SettingsLineNum >= 0;
         }
 
         // Info tick is used to update:
@@ -397,17 +422,6 @@ namespace EmuTrainStopBar
 
                 // Everything below only happens in gameplay and when PINE is working
 
-                this.BackColor = this.TransparencyKey;
-                this.FormBorderStyle = FormBorderStyle.None;
-
-                // Features for window size and position change
-                if (!timerFrame.Enabled)
-                {
-                    timerFrame.Start();
-                }
-                btnFullscreen.Visible = true;
-                pictureBoxBar.Visible = true;
-
                 IntPtr gameTitlePtr = Pine.pine_getgametitle(ipc, false);
                 string gameTitle = Pine.ReadUnmanagedString(gameTitlePtr);
 
@@ -426,8 +440,34 @@ namespace EmuTrainStopBar
                 // Reload settings if the game has changed
                 if (GameId != gameId || GameVersion != gameVersion)
                 {
-                    ApplySettings(gameId, gameVersion);
-                    labelSettings.Text = $"[Line {SettingsLineNum}] 0x{DistanceAddress.ToString("X8")}, {DistanceDataType}, x{DistanceScale}, AR{AspectRatio}, {PixelsPerMeter}px/m, {BarWidth}px";
+                    SettingsLoadSuccess = ApplySettings(gameId, gameVersion);
+                    if (SettingsLoadSuccess)
+                    {
+                        labelSettings.Text = $"[Line {SettingsLineNum}] 0x{DistanceAddress.ToString("X8")}, {DistanceDataType}, x{DistanceScale}, AR{AspectRatio}, {PixelsPerMeter}px/m, {BarWidth}px";
+                    }
+                    else
+                    {
+                        labelSettings.Text = $"No configuration for this game.";
+                        labelDistance.Text = $"Add it to {SettingsFileLocation} and restart the app.";
+                        RestoreStyle();
+                        return;
+                    }
+                }
+
+                // Everything below only happens if settings are loaded
+                if (SettingsLoadSuccess)
+                {
+                    this.BackColor = this.TransparencyKey;
+                    this.FormBorderStyle = FormBorderStyle.None;
+                    this.Opacity = InGameOpacity;
+
+                    // Features for window size and position change
+                    if (!timerFrame.Enabled)
+                    {
+                        timerFrame.Start();
+                    }
+
+                    pictureBoxBar.Visible = true;
                 }
             }
         }
@@ -484,10 +524,10 @@ namespace EmuTrainStopBar
             gb.FillRectangle(M3Brush, new Rectangle(0, stopbarTop + 5 * PixelsPerMeter, BarWidth, PixelsPerMeter));
             gb.FillRectangle(M2Brush, new Rectangle(0, stopbarTop + PixelsPerMeter, BarWidth, 4 * PixelsPerMeter));
             gb.FillRectangle(M1Brush, new Rectangle(0, stopbarTop + 2 * PixelsPerMeter, BarWidth, 2 * PixelsPerMeter));
-            gb.FillRectangle(VeryCloseBrush, new Rectangle(0, stopbarTop + 3 * PixelsPerMeter - BarWidth / 2, BarWidth, BarWidth));
+            gb.FillRectangle(VeryCloseBrush, new Rectangle(0, stopbarTop + 3 * PixelsPerMeter - CenterLineThickness / 2, BarWidth, CenterLineThickness));
 
             // Marker
-            if (Math.Abs(distance) < 50)
+            if (Math.Abs(distance) < MaxDistance)
             {
                 int markerCenterY = (int)(this.Height / 2 - distance * PixelsPerMeter);
                 Point[] poly = new Point[]
@@ -502,6 +542,16 @@ namespace EmuTrainStopBar
 
             pictureBoxBar.Image = BmBar;
             gb.Dispose();
+
+            // For auto-hide function
+            bool mouseMoved = Cursor.Position != PrevCursorPosition;
+            if (mouseMoved)
+            {
+                timerMouseMove.Stop();
+                timerMouseMove.Start();
+                SetMenuContentVisibility(true);
+            }
+            PrevCursorPosition = Cursor.Position;
         }
 
         private void Form1_SizeChanged(object sender, EventArgs e)
@@ -509,6 +559,17 @@ namespace EmuTrainStopBar
             // Assume that the height has changed
             BmBar = new Bitmap(BarWidth, this.Height);
             pictureBoxBar.Image = BmBar;
+        }
+
+        private void timerMouseMove_Tick(object sender, EventArgs e)
+        {
+            timerMouseMove.Stop();
+
+            // Since the stopbar is only visible in game, it can be used as a check for being in game (hacky)
+            if (pictureBoxBar.Visible)
+            {
+                SetMenuContentVisibility(false);
+            }
         }
     }
 }

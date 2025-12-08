@@ -1,15 +1,17 @@
-# Format: Disc ID, version, memory location, data type, multiplier, comments
+### FORMAT ###
+
+# Items are written in CSV (comma-separated values) style.
 
 # Disc ID:			[string] Typically 4 letters, a dash, and 5 numbers.
 # Version:			[string] Game version.
 # Memory location:	[string] Hexadecimal location of distance address as an offset from EEMEM start.
-#						DO NOT include 0x, only use 0-9 and A-F
+#						DO NOT include 0x. Only use 0-9 and A-F.
 #						Use Cheat Engine to find it.
 # Data type:		[string] One of the following: (s16, s32, s64, f32, f64)
 						Refers to signed integers and floating-point numbers.
 # Multiplier:		[float] Use it to convert to meters. Can have negative sign and decimal point.
-# Aspect ratio:		[float] Height of the overlay divided by its width. Try 0.75 or 0.5625.
-						(Fullscreen mode only)
+# Aspect ratio:		[float] Width of the game screen divided by its height.
+						Try 1.333 (4:3) or 1.778 (16:9).
 # Bar scale:		[int] Pixels per meter. The colored bars measure +- 3m.
 # Bar width:		[int] Thickness of the stop bar.
 # Comments:			Store any text, like the game title.
@@ -21,4 +23,6 @@
 
 ### BEGINNING OF DATA TABLE ###
 
-SLPM-67007,1.01,1ED340,f32,1.00,0.75,50,20,Ongakukan Keisei Toei Keikyu
+SLPM-65148,1.02,3D56F4,f32,1.00,1.778,50,20,Densha de Go Ryojou-hen (widescreen patch)
+SLPM-65590,1.02,2C1DE4,f32,1.00,1.778,50,20,Densha de Go FINAL (widescreen patch)
+SLPM-67007,1.01,1ED340,f32,1.00,1.333,50,20,Ongakukan Keisei Toei Keikyu
