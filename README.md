@@ -2,6 +2,10 @@
 
 This application adds a visual stop indicator to train simulators in PCSX2, RPCS3, and Duckstation. The indicator helps to visualize the final few meters of braking, where train simulators typically lack visual references for.
 
+![](img/demo.png)
+
+![](img/entry_menu.png)
+
 ### Notice
 
 - PINE is used to get information from emulators. Ensure that it is enabled. (It is usually a hidden setting.)
