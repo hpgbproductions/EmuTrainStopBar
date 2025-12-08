@@ -4,7 +4,7 @@ This application adds a visual stop indicator to train simulators in PCSX2, RPCS
 
 ![](img/demo.png)
 
-![](img/entry_menu.png)
+![](img/start.png)
 
 ### Notice
 
