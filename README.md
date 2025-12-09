@@ -8,8 +8,10 @@ This application adds a visual stop indicator to train simulators in PCSX2, RPCS
 
 ### Notice
 
-- PINE is used to get information from emulators. Ensure that it is enabled. (It is usually a hidden setting.)
-- This is a Windows Forms application. Linux support is untested.
+- PINE is used to get information from emulators. Make sure that it is enabled. Activation for selected emulator versions:
+    - PCSX2 2.\*: Tools > Show Advanced Settings ON. System > Settings > Advanced > scroll to the bottom.
+    - RPCS3 0.0.38: [Top row] Configuration > IPC.
+- Only works on Windows.
 
 ### How to Use
 
