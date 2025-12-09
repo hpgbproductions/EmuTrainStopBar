@@ -2,7 +2,7 @@
 
 # Items are written in CSV (comma-separated values) style.
 
-# Disc ID:			[string] Typically 4 letters, a dash, and 5 numbers.
+# Disc ID:			[string] Alphanumeric code that identifies the game.
 # Version:			[string] Game version.
 # Memory location:	[string] Hexadecimal location of distance address as an offset from EEMEM start.
 #						DO NOT include 0x. Only use 0-9 and A-F.
