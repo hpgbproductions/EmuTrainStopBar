@@ -149,7 +149,7 @@ namespace EmuTrainStopBar
         // Fit the window within a determined rectangular area while setting aspect ratio
         private void SetWindowPosition(int centerX, int centerY, int maxWidth, int maxHeight, float aspectRatio)
         {
-            if (maxWidth / aspectRatio < maxHeight)
+            if (maxWidth / aspectRatio > maxHeight)
             {
                 // Use height limit
                 this.Width = (int)Math.Round(maxHeight * aspectRatio);
@@ -493,14 +493,6 @@ namespace EmuTrainStopBar
                     int maxWidth = EmuRect.Right - EmuRect.Left;
                     int maxHeight = EmuRect.Bottom - EmuRect.Top - CaptionHeight - 2 * MenuHeight;
                     SetWindowPosition(centerX, centerY, maxWidth, maxHeight, AspectRatio);
-
-                    // Deprecated
-                    /*
-                    this.Top = EmuRect.Top + CaptionHeight + MenuHeight;
-                    this.Left = EmuRect.Left;
-                    this.Width = EmuRect.Right - EmuRect.Left;
-                    this.Height = EmuRect.Bottom - EmuRect.Top - CaptionHeight - 2*MenuHeight;
-                    */
                 }
             }
 
